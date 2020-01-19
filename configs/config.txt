@@ -1,0 +1,29 @@
+#Dataset parameters
+
+#dspath - Path to ds folder
+#n - Number of samples in dataset
+#ntest - Number of samples for test
+#dim - Sample dimensional
+#k - Nearest neighbour
+#n_trees - Number of trees
+#depth - Depth of each tree
+#density - Expected proportion of non-zero components in the random vectors(default=-1)
+#vervose - Print result for every test
+
+dspath=/home/vloods/Downloads/sift/
+n=10000
+ntest=1000
+dim=128
+k=10
+n_trees=300
+depth=8
+density=-1
+parallel=1
+verbose=0
+votes=3
+
+
+
+
+
+
