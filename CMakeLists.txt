@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 project(RPForest)
 
-set(CMAKE_CXX_STANDARD 17)
-
-add_executable(RPForest main.cpp)
+add_executable(RPForest main.cpp RPForest.h common.h)
 target_link_libraries(RPForest -fopenmp)
-
 
 
