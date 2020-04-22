@@ -163,7 +163,7 @@ int main() {
     }
 
     std::cout << "Results:" << std::endl;
-    std::cout << " - Accuracy: " << total_acc / p.ntest << "\n - Average RPTime: " << total_rpt / p.ntest << "\n";
+    std::cout << " - Accuracy: " << total_acc / p.ntest << "\n - Average RPTime: " << total_rpt / p.ntest << "\n - Average BFTime: " << total_bft/p.ntest;
 
     delete[] test;
     delete[] train;
