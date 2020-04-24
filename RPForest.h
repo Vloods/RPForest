@@ -16,7 +16,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 #include "Eigen/Dense"
 #include "Eigen/SparseCore"
 
@@ -45,18 +44,17 @@ public:
             X(Eigen::Map<const Eigen::MatrixXf>(X_.data(), X_.rows(), X_.cols())),
             n_samples(X_.cols()),
             dim(X_.rows()) {}
-
     /**
     * @param X_ a float array containing the data set with each data point
     * stored contiguously in memory
     * @param dim_ dimension of the data
     * @param n_samples_ number of data points
     */
-    RPForest(const float *X_, int dim_, int n_samples_) :
-            X(Eigen::Map<const Eigen::MatrixXf>(X_, dim_, n_samples_)),
+    RPForest(std::vector<float> &X_, int dim_, int n_samples_) :
+            X(Eigen::Map<const Eigen::MatrixXf>(&X_[0], dim_, n_samples_)),
             n_samples(n_samples_),
-            dim(dim_) {}
-
+            dim(dim_) {
+    }
 
     /**@}*/
 
@@ -135,7 +133,14 @@ public:
     /**
     * Builds a single random projection tree. The tree is constructed by recursively
     * projecting the data on a random vector and splitting into two by the median.
+    *
+    * @param begin iterator to the beginning of the subtree
+    * @param end iterator to rhe ending of the subtree
+    * @param tree_level current depth
+    * @param n_tree number of trees
+    * @param tree_projections array of tree projections
     */
+
     void grow_subtree(std::vector<int>::iterator begin, std::vector<int>::iterator end,
                       int tree_level, int i, int n_tree, const Eigen::MatrixXf &tree_projections) {
         int n = end - begin;
@@ -171,8 +176,7 @@ public:
     * Finds k approximate nearest neighbors
     * from a data set X for a query point q. The indices of k nearest neighbors
     * are written to a buffer out, which has to be preallocated to have at least
-    * length k. Optionally also Euclidean distances to these k nearest points
-    * are written to a buffer out_distances. If there are less than k points in
+    * length k. If there are less than k points in
     * the candidate set, -1 is written to the remaining locations of the
     * output buffers.
     */
@@ -184,11 +188,8 @@ public:
     * @param k number of nearest neighbors searched for
     * @param vote_threshold - number of votes required for a query point to be included in the candidate set
     * @param out output buffer (size = k) for the indices of k approximate nearest neighbors
-    * @param out_distances optional output buffer (size = k) for distances to k approximate nearest neighbors
-    * @param out_n_elected optional output parameter (size = 1) for the candidate set size
     */
-    void query(const float *data, int k, int vote_threshold, int *out,
-               float *out_distances = nullptr, int *out_n_elected = nullptr) const {
+    void query(std::vector<float> &data, int k, int vote_threshold, std::vector<int> &out) const {
 
         if (k <= 0 || k > n_samples) {
             throw std::out_of_range("k must belong to the set {1, ..., n}.");
@@ -202,7 +203,7 @@ public:
             throw std::logic_error("The index must be built before making queries.");
         }
 
-        const Eigen::Map<const Eigen::VectorXf> q(data, dim);
+        const Eigen::Map<const Eigen::VectorXf> q(&data[0], dim);
 
         Eigen::VectorXf projected_query(n_pool);
         if (density < 1)
@@ -249,11 +250,7 @@ public:
             }
         }
 
-        if (out_n_elected) {
-            *out_n_elected = n_elected;
-        }
-
-        exact_knn(q, k, elected, n_elected, out, out_distances);
+        exact_knn(q, k, elected, n_elected, out);
     }
 
     /**
@@ -263,12 +260,10 @@ public:
    * @param k number of nearest neighbors searched for
    * @param vote_threshold number of votes required for a query point to be included in the candidate set
    * @param out output buffer (size = k) for the indices of k approximate nearest neighbors
-   * @param out_distances optional output buffer (size = k) for distances to k approximate nearest neighbors
-   * @param out_n_elected optional output parameter (size = 1) for the candidate set size
    */
-    void query(const Eigen::Ref<const Eigen::VectorXf> &q, int k, int vote_threshold, int *out,
-               float *out_distances = nullptr, int *out_n_elected = nullptr) const {
-        query(q.data(), k, vote_threshold, out, out_distances, out_n_elected);
+    void query(const Eigen::Ref<const Eigen::VectorXf> &q, int k, int vote_threshold, std::vector<int> &out) const {
+        std::vector<float> vq(q.data(), q.data() + q.size());
+        query(vq, k, vote_threshold, out);
     }
     /**@}*/
 
@@ -277,8 +272,7 @@ public:
     * Functions for fast exact k-nn search: find k nearest neighbors for a
     * query point q from a data set X_. The indices of k nearest neighbors are
     * written to a buffer out, which has to be preallocated to have at least
-    * length k. Optionally also the Euclidean distances to these k nearest points
-    * are written to a buffer out_distances. There are both static and member
+    * length k. There are both static and member
     * versions.
     */
 
@@ -289,13 +283,12 @@ public:
     * @param n_samples number of points in a data set
     * @param k number of neighbors searched for
     * @param out output buffer (size = k) for the indices of k nearest neighbors
-    * @param out_distances optional output buffer (size = k) for the distances to k nearest neighbors
     */
-    static void exact_knn(const float *q_data, const float *X_data, int dim, int n_samples,
-                          int k, int *out, float *out_distances = nullptr) {
+    static void exact_knn(std::vector<float> &q_data, std::vector<float> &X_data, int dim, int n_samples,
+                          int k, std::vector<int> &out) {
 
-        const Eigen::Map<const Eigen::MatrixXf> X(X_data, dim, n_samples);
-        const Eigen::Map<const Eigen::VectorXf> q(q_data, dim);
+        const Eigen::Map<const Eigen::MatrixXf> X(&X_data[0], dim, n_samples);
+        const Eigen::Map<const Eigen::VectorXf> q(&q_data[0], dim);
 
         if (k < 1 || k > n_samples) {
             throw std::out_of_range("k must be positive and no greater than the sample size of data X.");
@@ -312,9 +305,6 @@ public:
             distances.minCoeff(&index);
             out[0] = index;
 
-            if (out_distances)
-                out_distances[0] = std::sqrt(distances(index));
-
             return;
         }
 
@@ -326,30 +316,21 @@ public:
         for (int i = 0; i < k; ++i)
             out[i] = idx(i);
 
-        if (out_distances) {
-            for (int i = 0; i < k; ++i)
-                out_distances[i] = std::sqrt(distances(idx(i)));
-        }
+
     }
 
     /**
     * @param q pointer to an array containing the query point
     * @param k number of points searched for
     * @param out output buffer (size = k) for the indices of k nearest neighbors
-    * @param out_distances optional output buffer (size = k) for the distances to k nearest neighbors
+    * @param indices vector of features
     */
     void exact_knn(const Eigen::Map<const Eigen::VectorXf> &q, int k, const Eigen::VectorXi &indices,
-                   int n_elected, int *out, float *out_distances = nullptr) const {
+                   int n_elected, std::vector<int> &out) const {
 
         if (!n_elected) {
             for (int i = 0; i < k; ++i)
                 out[i] = -1;
-
-            if (out_distances) {
-                for (int i = 0; i < k; ++i)
-                    out_distances[i] = -1;
-            }
-
             return;
         }
 
@@ -364,9 +345,6 @@ public:
             distances.minCoeff(&index);
             out[0] = n_elected ? indices(index) : -1;
 
-            if (out_distances)
-                out_distances[0] = n_elected ? std::sqrt(distances(index)) : -1;
-
             return;
         }
 
@@ -378,11 +356,6 @@ public:
 
         for (int i = 0; i < k; ++i)
             out[i] = i < n_elected ? indices(idx(i)) : -1;
-
-        if (out_distances) {
-            for (int i = 0; i < k; ++i)
-                out_distances[i] = i < n_elected ? std::sqrt(distances(idx(i))) : -1;
-        }
     }
 
     /**
@@ -390,39 +363,45 @@ public:
     * @param X Eigen ref to a data set
     * @param k number of neighbors searched for
     * @param out output buffer (size = k) for the indices of k nearest neighbors
-    * @param out_distances optional output buffer (size = k) for the distances to k nearest neighbors
     */
     static void exact_knn(const Eigen::Ref<const Eigen::VectorXf> &q,
                           const Eigen::Ref<const Eigen::MatrixXf> &X,
-                          int k, int *out, float *out_distances = nullptr) {
-        RPForest::exact_knn(q.data(), X.data(), X.rows(), X.cols(), k, out, out_distances);
+                          int k, std::vector<int> &out) {
+        std::vector<float> vq(q.data(), q.data() + q.size());
+        std::vector<float> vX(X.data(), X.data() + X.size());
+        RPForest::exact_knn(vq, vX, X.rows(), X.cols(), k, out);
     }
 
     /**
     * @param q pointer to an array containing the query point
     * @param k number of neighbors searched for
     * @param out output buffer (size = k) for the indices of k nearest neighbors
-    * @param out_distances optional output buffer (size = k) for the distances to k nearest neighbors
     */
-    void exact_knn(const float *q, int k, int *out, float *out_distances = nullptr) const {
-        RPForest::exact_knn(q, X.data(), dim, n_samples, k, out, out_distances);
+    void exact_knn(std::vector<float> q, int k, std::vector<int> &out) const {
+        std::vector<float> vX(X.data(), X.data() + X.size());
+        RPForest::exact_knn(q, vX, dim, n_samples, k, out);
     }
 
     /**
    * @param q pointer to an array containing the query point
    * @param k number of points searched for
    * @param out output buffer (size = k) for the indices of k nearest neighbors
-   * @param out_distances optional output buffer (size = k) for the distances to k nearest neighbors
    */
-    void exact_knn(const Eigen::Ref<const Eigen::VectorXf> &q, int k, int *out,
-                   float *out_distances = nullptr) const {
-        RPForest::exact_knn(q.data(), X.data(), dim, n_samples, k, out, out_distances);
+    void exact_knn(const Eigen::Ref<const Eigen::VectorXf> &q, int k, std::vector<int> &out) const {
+        std::vector<float> vq(q.data(), q.data() + q.size());
+        std::vector<float> vX(X.data(), X.data() + X.size());
+        RPForest::exact_knn(vq, vX, dim, n_samples, k, out);
     }
 
     /**
     * Computes the leaf sizes of a tree assuming a median split and that
     * when the number points is odd, the extra point is always assigned to
     * to the left branch.
+    *
+    * @param n number of samples
+    * @param level current depth
+    * @param depth of tree
+    * @param vector of results
     */
     static void count_leaf_sizes(int n, int level, int tree_depth, std::vector<int> &out_leaf_sizes) {
         if (level == tree_depth) {
@@ -439,6 +418,9 @@ public:
    * all the leaves of a tree concatenated. Assumes that median split is used
    * and when the number points is odd, the extra point is always assigned to
    * the left branch.
+   * @param depth depth of tree
+   * @param n number of samples
+   * @param indices vector for result
    */
     static void count_first_leaf_indices(std::vector<int> &indices, int n, int depth) {
         std::vector<int> leaf_sizes;
@@ -449,7 +431,15 @@ public:
         for (int i = 0; i < (int) leaf_sizes.size(); ++i)
             indices[i + 1] = indices[i] + leaf_sizes[i];
     }
-
+    /**
+   * Computes indices of the first elements of leaves in a vector containing
+   * all the leaves of a all trees concatenated. Assumes that median split is used
+   * and when the number points is odd, the extra point is always assigned to
+   * the left branch.
+   * @param depth_max max depth of tree
+   * @param n number of samples
+   * @param indices vector for result
+   */
     static void count_first_leaf_indices_all(std::vector<std::vector<int>> &indices, int n, int depth_max) {
         for (int d = 0; d <= depth_max; ++d) {
             std::vector<int> idx;
@@ -628,7 +618,7 @@ public:
     }
 
 private:
-    const Eigen::Map<const Eigen::MatrixXf> X; // the data matrix
+    Eigen::Map<const Eigen::MatrixXf> X; // the data matrix
     Eigen::MatrixXf split_points; // all split points in all trees
     std::vector<std::vector<int>> tree_leaves; // contains all leaves of all trees
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> dense_random_matrix; // random vectors needed for all the RP-trees
