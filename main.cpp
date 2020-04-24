@@ -91,9 +91,9 @@ void read_config(RPFparams &pars) {
 
 int main() {
     RPFparams p;
-    std::cout << "---------------------------------------------" << std::endl;
-    std::cout << "Random Projection Forest by Vladislav Tishin." << std::endl;
-    std::cout << "---------------------------------------------" << std::endl << std::endl;
+    std::cout << "---------------------------------------------" << '\n';
+    std::cout << "Random Projection Forest by Vladislav Tishin." << '\n';
+    std::cout << "---------------------------------------------" << '\n' << '\n';
     read_config(p);
 
     //get data
@@ -113,16 +113,16 @@ int main() {
 
     //Building forest
     if (!p.parallel) omp_set_num_threads(1);
-
-    std::cout << "Growing forest..." << std::endl;
+    std::vector<float> vtrain(train, train + p.n_points*p.dim);
+    std::cout << "Growing forest..."<< '\n';
     double build_start = omp_get_wtime();
-    RPForest index_dense(train, p.dim, p.n_points);
+    RPForest index_dense(vtrain, p.dim, p.n_points);
     index_dense.grow(p.n_trees, p.depth);
     double build_time = omp_get_wtime() - build_start;
     std::cout << "Growing Time: " << build_time << std::endl << std::endl;
 
     //Testing
-    std::cout << "Testing..." << std::endl;
+    std::cout << "Testing..." << '\n';
     float total_acc = 0.0f;
     double total_rpt = 0.0;
     double total_bft = 0.0;
@@ -131,39 +131,43 @@ int main() {
         const Map<const VectorXf> q(&test[i * p.dim], p.dim);
         const Map<const MatrixXf> X(train, p.dim, p.n_points);
 
-        VectorXi indices_exact(p.k);
+        std::vector<int> indices_exact(p.k);
         double start = omp_get_wtime();
-        RPForest::exact_knn(q, X, p.k, indices_exact.data());
+        RPForest::exact_knn(q, X, p.k, indices_exact);
         double end = omp_get_wtime();
         double def_time = end - start;
         total_bft += def_time;
 
         start = omp_get_wtime();
-        index_dense.query(q, p.k, p.votes, &result[0]);
+        index_dense.query(q, p.k, p.votes, result);
         end = omp_get_wtime();
         double time = end - start;
         total_rpt += time;
 
         float accuracy = 0.0;
         for (int i = 0; i < p.k; ++i) {
-            accuracy += (result[i] == indices_exact(i));
+            accuracy += (result[i] == indices_exact[i]);
         }
         accuracy /= p.k;
         total_acc += accuracy;
 
         if (p.verbose) {
-            std::cout << indices_exact.transpose() << std::endl;
+            for(auto &x: indices_exact)
+                std::cout << x;
+            std::cout << '\n';
             for (int &y : result) {
                 std::cout << y << " ";
             }
             std::cout << std::endl;
             std::cout << "Accuracy: " << setprecision(3) << accuracy << '\t' << "RPTime: " << time << '\t'
-                      << "BFTime: " << def_time << std::endl << std::endl;
+                      << "BFTime: " << def_time << '\n' << '\n';
         }
     }
 
-    std::cout << "Results:" << std::endl;
+    std::cout << "Results:" << '\n';
     std::cout << " - Accuracy: " << total_acc / p.ntest << "\n - Average RPTime: " << total_rpt / p.ntest << "\n - Average BFTime: " << total_bft/p.ntest;
+
+
 
     delete[] test;
     delete[] train;
